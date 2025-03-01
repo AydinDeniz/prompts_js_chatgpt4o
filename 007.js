@@ -1,60 +1,46 @@
-class TaskQueue {
-    constructor(maxConcurrent = 3) {
-        this.maxConcurrent = maxConcurrent;
-        this.pendingTasks = [];
+
+// Asynchronous Task Queue with Limited Concurrency
+class AsyncTaskQueue {
+    constructor(concurrencyLimit) {
+        this.queue = [];
         this.activeTasks = 0;
+        this.concurrencyLimit = concurrencyLimit;
     }
 
-    enqueueTask(task) {
+    // Function to add tasks to the queue
+    addTask(task) {
         return new Promise((resolve, reject) => {
-            this.pendingTasks.push({ task, resolve, reject });
-            this.processQueue();
+            this.queue.push(() => task().then(resolve).catch(reject));
+            this.runNextTask();
         });
     }
 
-    async processQueue() {
-        while (this.pendingTasks.length > 0 && this.activeTasks < this.maxConcurrent) {
-            const { task, resolve, reject } = this.pendingTasks.shift();
+    // Run the next task in the queue if below concurrency limit
+    runNextTask() {
+        if (this.activeTasks < this.concurrencyLimit && this.queue.length > 0) {
             this.activeTasks++;
-            try {
-                await task();
-                resolve();
-            } catch (error) {
-                reject(error);
-            } finally {
+            const nextTask = this.queue.shift();
+            nextTask().finally(() => {
                 this.activeTasks--;
-                this.processQueue();
-            }
+                this.runNextTask();
+            });
         }
     }
 }
 
-// Example usage:
-const taskQueue = new TaskQueue(3);
+// Example usage of AsyncTaskQueue
+const sleep = (time) => new Promise((resolve) => setTimeout(resolve, time));
 
-// Example tasks
-async function task1() {
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    console.log('Task 1 completed');
-}
+const queue = new AsyncTaskQueue(3); // Limit of 3 concurrent tasks
 
-async function task2() {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    console.log('Task 2 completed');
-}
+// Sample tasks with varying execution times
+const tasks = [
+    () => sleep(1000).then(() => console.log("Task 1 completed")),
+    () => sleep(2000).then(() => console.log("Task 2 completed")),
+    () => sleep(500).then(() => console.log("Task 3 completed")),
+    () => sleep(1200).then(() => console.log("Task 4 completed")),
+    () => sleep(300).then(() => console.log("Task 5 completed"))
+];
 
-async function task3() {
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    console.log('Task 3 completed');
-}
-
-async function task4() {
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    console.log('Task 4 completed');
-}
-
-// Enqueue tasks
-taskQueue.enqueueTask(task1).then(() => console.log('Task 1 done'));
-taskQueue.enqueueTask(task2).then(() => console.log('Task 2 done'));
-taskQueue.enqueueTask(task3).then(() => console.log('Task 3 done'));
-taskQueue.enqueueTask(task4).then(() => console.log('Task 4 done'));
+// Adding tasks to the queue
+tasks.forEach(task => queue.addTask(task));

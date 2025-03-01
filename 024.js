@@ -1,122 +1,126 @@
-// Client-side code
-const tf = require('@tensorflow/tfjs');
-const plaid = require('plaid');
-const Chart = require('chart.js');
+// HTML for the AI-powered personal finance tracker (assumed to be in your HTML file)
+/*
+<div id="finance-tracker">
+  <form id="transaction-form">
+    <input type="text" id="transaction-description" placeholder="Description" required />
+    <input type="number" id="transaction-amount" placeholder="Amount" required />
+    <button type="submit">Add Transaction</button>
+  </form>
+  <div id="balance-display">Current Balance: $0</div>
+  <canvas id="expense-chart" width="400" height="200"></canvas>
+  <ul id="transaction-list"></ul>
+</div>
+*/
 
-// TensorFlow.js setup
-const model = tf.sequential({
-    layers: [
-        tf.layers.dense({ units: 10, activation: 'relu', inputShape: [10] }),
-        tf.layers.dense({ units: 10, activation: 'relu' }),
-        tf.layers.dense({ units: 5, activation: 'softmax' })
-    ]
-});
+const transactionData = [];
+let balance = 0;
 
-// Load model
-async function loadModel() {
-    try {
-        const model = await tf.loadLayersModel('model.json');
-        return model;
-    } catch (error) {
-        console.error('Error loading model:', error);
-    }
-}
+class PersonalFinanceTracker {
+  constructor(apiKey) {
+    this.apiKey = apiKey;
+    this.loadTransactions();
+    this.updateBalance();
+    this.renderChart();
+    this.setupEventListeners();
+  }
 
-// Transaction categorization
-async function categorizeTransaction(transaction) {
-    const model = await loadModel();
-    const features = [
-        transaction.amount,
-        transaction.date.now() / 1000,
-        transaction.description.length,
-        // Add more features as needed
-    ];
-    const prediction = model.predict(features);
-    return prediction.argMax(1).dataSync()[0];
-}
+  setupEventListeners() {
+    document.getElementById('transaction-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.addTransaction();
+    });
+  }
 
-// Plaid integration
-const plaidClient = new plaid.Client({
-    clientID: 'your-client-id',
-    secret: 'your-secret',
-    environment: 'sandbox',
-});
+  addTransaction() {
+    const description = document.getElementById('transaction-description').value;
+    const amount = parseFloat(document.getElementById('transaction-amount').value);
+    const category = this.categorizeTransaction(description, amount);
 
-// Fetch transactions
-async function fetchTransactions() {
-    try {
-        const response = await plaidClient.getTransactions({
-            access_token: 'your-access-token',
-            start_date: '2023-01-01',
-            end_date: '2023-12-31'
+    const transaction = { description, amount, category, date: new Date() };
+    transactionData.push(transaction);
+    this.saveTransaction(transaction);
+    this.renderTransaction(transaction);
+    this.updateBalance(transaction.amount);
+    this.renderChart();
+
+    document.getElementById('transaction-form').reset();
+  }
+
+  async categorizeTransaction(description, amount) {
+    // Simulate AI categorization with TensorFlow.js
+    await tf.ready();
+    const model = await tf.loadLayersModel('path-to-your-model/model.json');
+    const input = tf.tensor([[amount]]); // Example placeholder
+    const prediction = model.predict(input);
+
+    const categories = ['Food', 'Transport', 'Entertainment'];
+    const index = prediction.argMax(-1).dataSync()[0];
+    return categories[index];
+  }
+
+  updateBalance(amount = 0) {
+    balance += amount;
+    document.getElementById('balance-display').textContent = `Current Balance: $${balance.toFixed(2)}`;
+  }
+
+  renderTransaction(transaction) {
+    const listItem = document.createElement('li');
+    listItem.textContent = `${transaction.date.toDateString()} - ${transaction.description}: $${transaction.amount.toFixed(2)} [${transaction.category}]`;
+    document.getElementById('transaction-list').appendChild(listItem);
+  }
+
+  renderChart() {
+    const ctx = document.getElementById('expense-chart').getContext('2d');
+    
+    if (this.chart) this.chart.destroy();
+
+    const data = this.getCategoryData();
+
+    this.chart = new Chart(ctx, {
+      type: 'pie',
+      data: {
+        labels: Object.keys(data),
+        datasets: [{
+          data: Object.values(data),
+          backgroundColor: ['#ff6384', '#36a2eb', '#cc65fe', '#ffce56', '#e7e9ed']
+        }]
+      }
+    });
+  }
+
+  getCategoryData() {
+    const categoryData = {};
+    transactionData.forEach(transaction => {
+      if (!categoryData[transaction.category]) {
+        categoryData[transaction.category] = 0;
+      }
+      categoryData[transaction.category] += transaction.amount;
+    });
+    return categoryData;
+  }
+
+  saveTransaction(transaction) {
+    // Placeholder for saving transaction, assuming backend API for persistence
+    fetch('/api/transactions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(transaction)
+    });
+  }
+
+  loadTransactions() {
+    // Placeholder for loading transaction data
+    fetch('/api/transactions')
+      .then(response => response.json())
+      .then(data => {
+        data.forEach(transaction => {
+          transactionData.push(transaction);
+          this.renderTransaction(transaction);
+          this.updateBalance(transaction.amount);
         });
-        return response.transactions;
-    } catch (error) {
-        console.error('Error fetching transactions:', error);
-    }
+        this.renderChart();
+      });
+  }
 }
 
-// PostgreSQL setup
-const { Pool } = require('pg');
-const dbConfig = {
-    user: 'your_username',
-    host: 'localhost',
-    database: 'finance',
-    password: 'your_password',
-    port: 5432,
-};
-const pool = new Pool(dbConfig);
-
-// Store transaction
-async function storeTransaction(transaction) {
-    try {
-        const result = await pool.query(`
-            INSERT INTO transactions (description, amount, category, date)
-            VALUES ($1, $2, $3, $4)
-            RETURNING *`, 
-            [transaction.description, transaction.amount, 
-             transaction.category, transaction.date]);
-        return result.rows[0];
-    } catch (error) {
-        console.error('Error storing transaction:', error);
-    }
-}
-
-// Display analytics
-async function updateAnalytics() {
-    try {
-        const response = await fetch('/api/analytics');
-        const data = await response.json();
-        const ctx = document.getElementById('analytics').getContext('2d');
-        new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: data.map(d => d.date),
-                datasets: [{
-                    label: 'Expenses',
-                    data: data.map(d => d.amount),
-                    borderColor: 'rgb(75, 192, 192)',
-                    tension: 0.1
-                }]
-            }
-        });
-    } catch (error) {
-        console.error('Error updating analytics:', error);
-    }
-}
-
-// Event listeners
-document.getElementById('refresh').addEventListener('click', async () => {
-    const transactions = await fetchTransactions();
-    for (const transaction of transactions) {
-        const category = await categorizeTransaction(transaction);
-        await storeTransaction({
-            ...transaction,
-            category
-        });
-    }
-    updateAnalytics();
-});
-
-// Initialize
-updateAnalytics();
+const financeTracker = new PersonalFinanceTracker('YOUR_API_KEY');

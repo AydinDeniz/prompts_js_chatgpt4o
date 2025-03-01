@@ -1,140 +1,113 @@
-// Initialize Firebase
-const firebaseConfig = {
-    apiKey: 'YOUR_API_KEY',
-    authDomain: 'YOUR_AUTH_DOMAIN',
-    projectId: 'YOUR_PROJECT_ID',
-    storageBucket: 'YOUR_STORAGE_BUCKET',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    appId: 'YOUR_APP_ID'
-};
+// HTML for the online classroom platform (assumed to be in your HTML file)
+/*
+<div id="classroom">
+  <video id="video-stream" controls autoplay></video>
+  <div id="chat">
+    <ul id="chat-messages"></ul>
+    <input type="text" id="chat-input" placeholder="Type a message" />
+    <button id="send-chat">Send</button>
+  </div>
+  <input type="file" id="file-share" />
+  <button id="upload-file">Upload File</button>
+  <div id="file-list"></div>
+</div>
+*/
 
-const app = firebase.initializeApp(firebaseConfig);
-const db = app.firestore();
-const storage = app.storage();
+const zoomClient = new ZoomMtg(); 
+const socket = new WebSocket('wss://your-websocket-server.com'); 
+const storageRef = firebase.storage().ref(); 
 
-// Initialize Zoom Client
-const ZoomMtg = require('zoom-meeting-apis');
-const client = new ZoomMtg.ZoomClient({
-    apiKey: 'YOUR_API_KEY',
-    apiSecret: 'YOUR_API_SECRET',
-    apiEndpoint: 'https://api.zoom.us/v2'
-});
+class OnlineClassroom {
+  constructor() {
+    this.initZoom();
+    this.initChat();
+    this.initFileShare();
+  }
 
-// Function to create a meeting
-async function createMeeting(topic, startTime, duration) {
-    try {
-        const response = await client.meetings.create({
-            topic: topic,
-            type: 2,
-            start_time: startTime,
-            duration: duration,
-            password: 'password',
-            agenda: 'Online Class',
-            settings: {
-                host_video: true,
-                participant_video: true,
-                join_before_host: false,
-                mute_upon_joining: true,
-                watermark: true,
-                use_pmi: false
-            }
+  async initZoom() {
+    ZoomMtg.setZoomJSLib('https://source.zoom.us/2.0.1/lib', '/av');
+    ZoomMtg.preLoadWasm();
+    ZoomMtg.prepareJssdk();
+
+    const meetingConfig = {
+      apiKey: 'YOUR_ZOOM_API_KEY',
+      meetingNumber: 'YOUR_MEETING_NUMBER',
+      userName: 'Participant',
+      passWord: 'YOUR_PASSWORD'
+    };
+
+    ZoomMtg.init({
+      leaveUrl: 'http://www.zoom.us',
+      success: () => {
+        ZoomMtg.join({
+          ...meetingConfig,
+          signature: 'YOUR_ZOOM_SIGNATURE',
+          success: (res) => {
+            console.log('Join meeting success');
+          },
+          error: (res) => {
+            console.log(res);
+          }
         });
-        return response;
-    } catch (error) {
-        console.error('Error creating meeting:', error);
-        return null;
-    }
-}
-
-// Function to join a meeting
-async function joinMeeting(meetingId, userName) {
-    try {
-        const response = await client.meetings.join({
-            meetingId: meetingId,
-            userName: userName,
-            password: 'password',
-            rememberMe: true
-        });
-        return response;
-    } catch (error) {
-        console.error('Error joining meeting:', error);
-        return null;
-    }
-}
-
-// Function to send chat message
-async function sendChatMessage(message) {
-    try {
-        const chatRef = db.collection('chats').doc();
-        await chatRef.set({
-            message: message,
-            sender: 'User',
-            timestamp: new Date().toISOString()
-        });
-    } catch (error) {
-        console.error('Error sending chat message:', error);
-    }
-}
-
-// Function to share file
-async function shareFile(file) {
-    try {
-        const fileRef = storage.ref().child(file.name);
-        const uploadTask = fileRef.put(file);
-        uploadTask.on('state_changed', (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            console.log('Upload is ' + progress + '% done');
-        }, (error) => {
-            console.error('Error sharing file:', error);
-        }, () => {
-            uploadTask.snapshot.ref.getDownloadURL().then((downloadURL) => {
-                console.log('File available at:', downloadURL);
-            });
-        });
-    } catch (error) {
-        console.error('Error sharing file:', error);
-    }
-}
-
-// Real-time chat updates
-db.collection('chats').onSnapshot((querySnapshot) => {
-    const chatLog = document.getElementById('chatLog');
-    chatLog.innerHTML = '';
-    querySnapshot.forEach((doc) => {
-        const chatEntry = document.createElement('div');
-        chatEntry.textContent = `${doc.data().sender}: ${doc.data().message}`;
-        chatLog.appendChild(chatEntry);
+      },
+      error: (res) => {
+        console.log(res);
+      }
     });
-});
+  }
 
-// Event listeners
-document.getElementById('createMeeting').addEventListener('click', async () => {
-    const topic = document.getElementById('topic').value;
-    const startTime = document.getElementById('startTime').value;
-    const duration = document.getElementById('duration').value;
-    const meeting = await createMeeting(topic, startTime, duration);
-    if (meeting) {
-        alert('Meeting created successfully');
-    }
-});
+  initChat() {
+    document.getElementById('send-chat').addEventListener('click', () => this.sendMessage());
 
-document.getElementById('joinMeeting').addEventListener('click', async () => {
-    const meetingId = document.getElementById('meetingId').value;
-    const userName = document.getElementById('userName').value;
-    const meeting = await joinMeeting(meetingId, userName);
-    if (meeting) {
-        alert('Joined meeting successfully');
-    }
-});
+    socket.addEventListener('message', (event) => {
+      const messageData = JSON.parse(event.data);
+      this.displayMessage(messageData.user, messageData.message);
+    });
+  }
 
-document.getElementById('sendMessage').addEventListener('click', () => {
-    const message = document.getElementById('message').value;
-    sendChatMessage(message);
-});
+  sendMessage() {
+    const message = document.getElementById('chat-input').value;
+    socket.send(JSON.stringify({ user: 'Participant', message }));
+    document.getElementById('chat-input').value = '';
+  }
 
-document.getElementById('shareFile').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) {
-        shareFile(file);
-    }
-});
+  displayMessage(user, message) {
+    const messageElement = document.createElement('li');
+    messageElement.textContent = `${user}: ${message}`;
+    document.getElementById('chat-messages').appendChild(messageElement);
+  }
+
+  initFileShare() {
+    document.getElementById('upload-file').addEventListener('click', () => this.uploadFile());
+  }
+
+  async uploadFile() {
+    const file = document.getElementById('file-share').files[0];
+    if (!file) return;
+
+    const fileRef = storageRef.child(`files/${file.name}`);
+    const uploadTask = fileRef.put(file);
+
+    uploadTask.on('state_changed',
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        console.log('Upload is ' + progress + '% done');
+      }, 
+      (error) => {
+        console.error('File upload error:', error);
+      }, 
+      async () => {
+        const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
+        this.displayFile(file.name, downloadURL);
+      }
+    );
+  }
+
+  displayFile(filename, url) {
+    const fileElement = document.createElement('div');
+    fileElement.innerHTML = `<a href="${url}" target="_blank">${filename}</a>`;
+    document.getElementById('file-list').appendChild(fileElement);
+  }
+}
+
+const onlineClassroom = new OnlineClassroom();

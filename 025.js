@@ -1,117 +1,73 @@
-// Connect to Ethereum provider
-const provider = new ethers.providers.JsonRpcProvider('https://mainnet.infura.io/v3/YOUR_PROJECT_ID');
-const wallet = new ethers.Wallet('YOUR_PRIVATE_KEY', provider);
+// HTML for the blockchain-based voting system (assumed to be in your HTML file)
+/*
+<div id="voting-system">
+  <h2>Vote Now</h2>
+  <div id="candidate-list"></div>
+  <button id="submit-vote">Submit Vote</button>
+  <div id="vote-status"></div>
+</div>
+*/
 
-// Smart contract interaction
-const contractAddress = '0x...CONTRACT_ADDRESS...';
-const contractAbi = [
-    {
-        "inputs": [],
-        "name": "getCandidates",
-        "outputs": [
-            {
-                "internalType": "address[]",
-                "name": "",
-                "type": "array"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "_candidate",
-                "type": "address"
-            }
-        ],
-        "name": "vote",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
+const web3 = new Web3(Web3.givenProvider || "http://localhost:8545");
+let votingContract;
+const votingAbi = []; // Replace with your Solidity contract ABI
+const votingAddress = 'YOUR_CONTRACT_ADDRESS'; // Replace with your contract address
+
+class BlockchainVotingSystem {
+  constructor() {
+    this.initContract();
+    this.setupEventListeners();
+    this.loadCandidates();
+  }
+
+  initContract() {
+    votingContract = new web3.eth.Contract(votingAbi, votingAddress);
+  }
+
+  async setupAccounts() {
+    const accounts = await web3.eth.requestAccounts();
+    this.account = accounts[0];
+  }
+
+  async loadCandidates() {
+    const candidateCount = await votingContract.methods.getCandidateCount().call();
+    const candidateList = document.getElementById('candidate-list');
+    candidateList.innerHTML = '';
+
+    for (let i = 0; i < candidateCount; i++) {
+      const candidate = await votingContract.methods.candidates(i).call();
+      const candidateElement = document.createElement('div');
+      candidateElement.innerHTML = `
+        <input type="radio" name="candidate" value="${candidate.id}" />
+        ${candidate.name} (${candidate.voteCount} votes)
+      `;
+      candidateList.appendChild(candidateElement);
     }
-];
+  }
 
-const contract = new ethers.Contract(contractAddress, contractAbi, wallet);
+  setupEventListeners() {
+    document.getElementById('submit-vote').addEventListener('click', async () => {
+      const selectedCandidate = document.querySelector('input[name="candidate"]:checked');
+      if (!selectedCandidate) {
+        alert('Please select a candidate to vote.');
+        return;
+      }
 
-// IPFS setup
-const ipfs = require('ipfs-http-client')('https://ipfs.infura.io:5001/api/v0');
+      await this.submitVote(selectedCandidate.value);
+    });
+  }
 
-// Function to initialize election
-async function initializeElection(electionData) {
+  async submitVote(candidateId) {
+    await this.setupAccounts();
+
     try {
-        const electionJson = JSON.stringify(electionData);
-        const ipfsResult = await ipfs.add(electionJson);
-        const electionHash = ipfsResult.path;
-
-        const tx = await contract.initializeElection(electionHash);
-        await tx.wait();
-        console.log('Election initialized successfully');
+      const receipt = await votingContract.methods.vote(candidateId).send({ from: this.account });
+      document.getElementById('vote-status').innerHTML = 'Vote submitted successfully. Transaction: ' + receipt.transactionHash;
+      this.loadCandidates();
     } catch (error) {
-        console.error('Error initializing election:', error);
+      document.getElementById('vote-status').innerHTML = 'Error submitting vote: ' + error.message;
     }
+  }
 }
 
-// Function to vote for candidate
-async function vote(candidateAddress) {
-    try {
-        const tx = await contract.vote(candidateAddress);
-        await tx.wait();
-        console.log('Vote cast successfully');
-    } catch (error) {
-        console.error('Error casting vote:', error);
-    }
-}
-
-// Function to get election data
-async function getElectionData() {
-    try {
-        const electionHash = await contract.getElectionData();
-        const ipfsResult = await ipfs.cat(electionHash);
-        const electionData = JSON.parse(ipfsResult.toString());
-        return electionData;
-    } catch (error) {
-        console.error('Error retrieving election data:', error);
-        return null;
-    }
-}
-
-// Function to get vote count
-async function getVoteCount(candidateAddress) {
-    try {
-        const voteCount = await contract.getVoteCount(candidateAddress);
-        return voteCount.toString();
-    } catch (error) {
-        console.error('Error getting vote count:', error);
-        return '0';
-    }
-}
-
-// Event listeners
-document.getElementById('initializeElection').addEventListener('click', () => {
-    const electionData = {
-        candidates: ['Candidate A', 'Candidate B', 'Candidate C'],
-        startDate: '2023-01-01',
-        endDate: '2023-12-31'
-    };
-    initializeElection(electionData);
-});
-
-document.getElementById('voteButton').addEventListener('click', () => {
-    const candidateAddress = document.getElementById('candidateAddress').value;
-    vote(candidateAddress);
-});
-
-// Initialize frontend
-window.onload = async () => {
-    const electionData = await getElectionData();
-    if (electionData) {
-        const candidatesList = document.getElementById('candidatesList');
-        electionData.candidates.forEach(candidate => {
-            const listItem = document.createElement('li');
-            listItem.textContent = candidate;
-            candidatesList.appendChild(listItem);
-        });
-    }
-};
+const blockchainVotingSystem = new BlockchainVotingSystem();

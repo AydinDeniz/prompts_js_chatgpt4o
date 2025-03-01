@@ -1,104 +1,63 @@
-// Function to get weather data
-async function getWeather(city) {
-    const API_KEY = 'YOUR_API_KEY';
-    const BASE_URL = 'https://api.openweathermap.org/data/2.5/';
+// HTML for the form (assumed to be in your HTML file)
+/*
+<form id="weather-form">
+  <input type="text" id="city" placeholder="Enter city" required />
+  <button type="submit">Get Weather</button>
+</form>
+<div id="weather-display"></div>
+<ul id="recent-cities"></ul>
+*/
 
-    try {
-        const response = await fetch(`${BASE_URL}weather?q=${city}&units=metric&appid=${API_KEY}`);
-        const data = await response.json();
-        return data;
-    } catch (error) {
-        console.error('Error fetching weather data:', error);
-        return null;
-    }
-}
+const apiKey = 'YOUR_WEATHER_API_KEY';
+const recentCities = [];
 
-// Function to save recent searches
-function saveRecentSearches(city) {
-    let recentSearches = JSON.parse(localStorage.getItem('recentSearches')) || [];
-    recentSearches.unshift(city);
-    if (recentSearches.length > 5) {
-        recentSearches = recentSearches.slice(0, 5);
-    }
-    localStorage.setItem('recentSearches', JSON.stringify(recentSearches));
-}
-
-// Function to display recent searches
-function displayRecentSearches() {
-    const recentSearches = JSON.parse(localStorage.getItem('recentSearches')) || [];
-    const searchHistory = document.getElementById('searchHistory');
-    searchHistory.innerHTML = recentSearches.map(city => 
-        `<div class="search-item">${city}</div>`
-    ).join('');
-}
-
-// Function to create weather chart
-function createWeatherChart(data) {
-    const ctx = document.getElementById('weatherChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: ['Temperature', 'Feels Like', 'Humidity', 'Wind Speed'],
-            datasets: [{
-                label: 'Weather Data',
-                data: [data.main.temp, data.main.feels_like, data.main.humidity, data.wind.speed],
-                backgroundColor: 'rgba(255, 99, 132, 0.5)',
-                borderColor: 'rgba(255, 99, 132, 1)',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
-            }
-        }
-    });
-}
-
-// Main function to handle user input
-async function handleWeatherSearch() {
-    const cityInput = document.getElementById('cityInput');
-    const city = cityInput.value.trim();
+document.getElementById('weather-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  
+  const city = document.getElementById('city').value;
+  
+  try {
+    // Fetch weather data
+    const response = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}&units=metric`);
+    const data = await response.json();
     
-    if (!city) {
-        alert('Please enter a city name');
-        return;
+    if (response.ok) {
+      // Display weather data
+      const weatherInfo = `
+        <h3>Weather in ${data.name}</h3>
+        <p>Temperature: ${data.main.temp} °C</p>
+        <p>Weather: ${data.weather[0].description}</p>
+        <p>Humidity: ${data.main.humidity}%</p>
+      `;
+      document.getElementById('weather-display').innerHTML = weatherInfo;
+      
+      // Update recent cities
+      if (!recentCities.includes(city)) {
+        if (recentCities.length >= 5) recentCities.shift();
+        recentCities.push(city);
+        localStorage.setItem('recentCities', JSON.stringify(recentCities));
+      }
+      
+    } else {
+      document.getElementById('weather-display').textContent = `Error: ${data.message}`;
     }
-
-    const weatherData = await getWeather(city);
-    
-    if (!weatherData) {
-        alert('Failed to retrieve weather data');
-        return;
-    }
-
-    // Display weather data
-    const weatherDisplay = document.getElementById('weatherDisplay');
-    weatherDisplay.innerHTML = `
-        <h2>Weather in ${weatherData.name}</h2>
-        <p>Temperature: ${weatherData.main.temp}°C</p>
-        <p>Feels Like: ${weatherData.main.feels_like}°C</p>
-        <p>Humidity: ${weatherData.main.humidity}%</p>
-        <p>Wind Speed: ${weatherData.wind.speed} m/s</p>
-    `;
-
-    // Create weather chart
-    createWeatherChart(weatherData);
-
-    // Save to recent searches
-    saveRecentSearches(city);
-    displayRecentSearches();
-}
-
-// Event listener for Enter key
-document.getElementById('cityInput').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') {
-        handleWeatherSearch();
-    }
+  } catch (error) {
+    document.getElementById('weather-display').textContent = 'An error occurred. Please try again later.';
+  }
+  
+  displayRecentCities();
 });
 
-// Initial display of recent searches
-displayRecentSearches();
+function displayRecentCities() {
+  const storedCities = JSON.parse(localStorage.getItem('recentCities')) || [];
+  const recentCitiesList = document.getElementById('recent-cities');
+  recentCitiesList.innerHTML = '';
+  storedCities.forEach(city => {
+    const listItem = document.createElement('li');
+    listItem.textContent = city;
+    recentCitiesList.appendChild(listItem);
+  });
+}
+
+// Load recent cities on page load
+window.onload = displayRecentCities;

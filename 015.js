@@ -1,121 +1,105 @@
-// Initialize IndexedDB
-const db = await idb.open('fitnessDB', 1, (upgradeDb) => {
-    if (!upgradeDb.objectStoreNames.contains('activities')) {
-        upgradeDb.createObjectStore('activities', { keyPath: 'id', autoIncrement: true });
-    }
-});
+// HTML for the fitness tracker application (assumed to be in your HTML file)
+/*
+<div id="fitness-tracker">
+  <form id="fitness-form">
+    <input type="number" id="steps" placeholder="Steps" required />
+    <input type="text" id="workouts" placeholder="Workout Description" required />
+    <input type="number" id="calories" placeholder="Calories" required />
+    <button type="submit">Log Activity</button>
+  </form>
+  <canvas id="activity-chart" width="400" height="200"></canvas>
+  <ul id="activity-log"></ul>
+</div>
+*/
 
-// Function to add activity
-async function addActivity(activity) {
-    try {
-        const tx = db.transaction('activities', 'readwrite');
-        const store = tx.objectStore('activities');
-        await store.add(activity);
-        await tx.done;
-        console.log('Activity added successfully');
-    } catch (error) {
-        console.error('Error adding activity:', error);
-    }
-}
+class FitnessTracker {
+  constructor() {
+    this.activities = JSON.parse(localStorage.getItem('activities')) || [];
+    this.init();
+  }
 
-// Function to retrieve all activities
-async function getAllActivities() {
-    try {
-        const tx = db.transaction('activities', 'readonly');
-        const store = tx.objectStore('activities');
-        const request = store.getAll();
-        const activities = await request.onsuccess();
-        return activities.target.result;
-    } catch (error) {
-        console.error('Error retrieving activities:', error);
-        return [];
-    }
-}
+  init() {
+    this.setupEventListeners();
+    this.renderActivityLog();
+    this.renderChart();
+  }
 
-// Function to visualize data with Canvas
-function visualizeData(activities) {
-    const ctx = document.getElementById('fitnessChart').getContext('2d');
-    const labels = activities.map(activity => activity.date);
-    const stepsData = activities.map(activity => activity.steps || 0);
-    const caloriesData = activities.map(activity => activity.calories || 0);
-
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Steps',
-                data: stepsData,
-                borderColor: 'rgb(75, 192, 192)',
-                tension: 0.1
-            },
-            {
-                label: 'Calories',
-                data: caloriesData,
-                borderColor: 'rgb(255, 99, 132)',
-                tension: 0.1
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: {
-                    position: 'top',
-                },
-                title: {
-                    display: true,
-                    text: 'Fitness Activity'
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
-            }
-        }
+  setupEventListeners() {
+    document.getElementById('fitness-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.logActivity();
     });
-}
+  }
 
-// Function to sync data with remote database
-async function syncData() {
-    try {
-        const activities = await getAllActivities();
-        const response = await fetch('/sync', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(activities),
-        });
+  logActivity() {
+    const steps = document.getElementById('steps').value;
+    const workouts = document.getElementById('workouts').value;
+    const calories = document.getElementById('calories').value;
 
-        if (!response.ok) {
-            throw new Error('Sync failed');
-        }
-
-        console.log('Data synced successfully');
-    } catch (error) {
-        console.error('Error syncing data:', error);
-    }
-}
-
-// Event listener for online status
-window.addEventListener('online', syncData);
-
-// Initialize the app
-window.onload = async () => {
-    const activities = await getAllActivities();
-    visualizeData(activities);
-};
-
-// Example usage
-document.getElementById('addActivity').addEventListener('click', async () => {
     const activity = {
-        date: new Date().toISOString(),
-        steps: 10000,
-        calories: 500,
-        meals: ['Breakfast', 'Lunch', 'Dinner']
+      date: new Date().toISOString().split('T')[0],
+      steps: parseInt(steps, 10),
+      workouts,
+      calories: parseInt(calories, 10)
     };
-    await addActivity(activity);
-    const updatedActivities = await getAllActivities();
-    visualizeData(updatedActivities);
-});
+
+    this.activities.push(activity);
+    localStorage.setItem('activities', JSON.stringify(this.activities));
+
+    this.renderActivityLog();
+    this.renderChart();
+
+    document.getElementById('fitness-form').reset();
+  }
+
+  renderActivityLog() {
+    const activityLog = document.getElementById('activity-log');
+    activityLog.innerHTML = '';
+
+    this.activities.forEach(activity => {
+      const listItem = document.createElement('li');
+      listItem.textContent = `Date: ${activity.date}, Steps: ${activity.steps}, Workouts: ${activity.workouts}, Calories: ${activity.calories}`;
+      activityLog.appendChild(listItem);
+    });
+  }
+
+  renderChart() {
+    const ctx = document.getElementById('activity-chart').getContext('2d');
+
+    const data = {
+      labels: this.activities.map(a => a.date),
+      datasets: [
+        {
+          label: 'Steps',
+          data: this.activities.map(a => a.steps),
+          backgroundColor: 'rgba(75, 192, 192, 0.2)',
+          borderColor: 'rgba(75, 192, 192, 1)',
+          borderWidth: 1
+        },
+        {
+          label: 'Calories',
+          data: this.activities.map(a => a.calories),
+          backgroundColor: 'rgba(255, 99, 132, 0.2)',
+          borderColor: 'rgba(255, 99, 132, 1)',
+          borderWidth: 1
+        }
+      ]
+    };
+
+    if (this.chart) this.chart.destroy();
+
+    this.chart = new Chart(ctx, {
+      type: 'line',
+      data,
+      options: {
+        scales: {
+          y: {
+            beginAtZero: true
+          }
+        }
+      }
+    });
+  }
+}
+
+const fitnessTracker = new FitnessTracker();

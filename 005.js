@@ -1,67 +1,51 @@
-function validateAndSubmitForm(formId) {
-    const form = document.getElementById(formId);
-    const nameInput = form.querySelector('#name');
-    const emailInput = form.querySelector('#email');
-    const phoneInput = form.querySelector('#phone');
 
-    // Validation functions
-    function validateName(name) {
-        return name.length >= 2 && /^[a-zA-Z ]+$/.test(name);
-    }
+// Import necessary libraries
+const express = require('express');
+const jwt = require('jsonwebtoken');
 
-    function validateEmail(email) {
-        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    }
+const app = express();
+const port = 3000;
+const SECRET_KEY = 'your_secret_key'; // Replace with a secure key in production
 
-    function validatePhone(phone) {
-        return /^\d{10}$/.test(phone);
-    }
+// Middleware to parse JSON requests
+app.use(express.json());
 
-    // Get values
-    const name = nameInput.value.trim();
-    const email = emailInput.value.trim();
-    const phone = phoneInput.value.trim();
+// Middleware to protect routes
+function authenticateToken(req, res, next) {
+    const token = req.headers['authorization']?.split(' ')[1];
+    if (!token) return res.status(401).json({ message: 'Access denied, token missing' });
 
-    // Validate inputs
-    if (!validateName(name)) {
-        alert('Please enter a valid name with at least 2 letters');
-        return;
-    }
-    if (!validateEmail(email)) {
-        alert('Please enter a valid email address');
-        return;
-    }
-    if (!validatePhone(phone)) {
-        alert('Please enter a valid 10-digit phone number');
-        return;
-    }
-
-    // Prepare data
-    const formData = {
-        name,
-        email,
-        phone
-    };
-
-    // Submit data
-    fetch('/api/submit', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('Form submitted successfully!');
-            form.reset();
-        } else {
-            alert('Submission failed: ' + data.error);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('An error occurred while submitting the form');
+    jwt.verify(token, SECRET_KEY, (err, user) => {
+        if (err) return res.status(403).json({ message: 'Invalid or expired token' });
+        req.user = user;
+        next();
     });
 }
+
+// Route to login and get a JWT
+app.post('/login', (req, res) => {
+    const { username } = req.body;
+    // Validate user credentials (static validation for demo purposes)
+    if (username === 'admin') {
+        const user = { username };
+        const token = jwt.sign(user, SECRET_KEY, { expiresIn: '1h' });
+        res.json({ token });
+    } else {
+        res.status(401).json({ message: 'Invalid credentials' });
+    }
+});
+
+// Protected route example
+app.get('/protected', authenticateToken, (req, res) => {
+    res.json({ message: 'Welcome to the protected route!', user: req.user });
+});
+
+// Unprotected route
+app.get('/', (req, res) => {
+    res.send('Welcome to the public route!');
+});
+
+// Start the server
+app.listen(port, () => {
+    console.log(`Server is running at http://localhost:${port}`);
+});

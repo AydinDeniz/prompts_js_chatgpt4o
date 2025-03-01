@@ -1,102 +1,127 @@
-// Client-side code
-const socket = io();
-const editor = document.getElementById('editor');
-const userId = localStorage.getItem('userId') || UUID();
-const docId = window.location.pathname.split('/').pop();
+// HTML for the real-time collaborative text editor (assumed to be in your HTML file)
+/*
+<div id="text-editor-container">
+  <textarea id="text-editor" rows="20" cols="80" placeholder="Start typing..."></textarea>
+  <button id="save-button">Save</button>
+  <div id="status-message"></div>
+  <div id="user-list">Users Editing:</div>
+</div>
+*/
 
-// Load document
-socket.emit('load-doc', docId);
+const userName = `User${Math.floor(Math.random() * 1000)}`; // Random username for simplicity
+const socket = new WebSocket('wss://your-websocket-server.com');
+let currentDocument = 'default-doc';
+let isTyping = false;
+let typingTimeout;
 
-// Handle document load
-socket.on('doc-loaded', (data) => {
-    editor.value = data.content;
-    editor.focus();
-});
+function setupWebSocket() {
+  socket.addEventListener('open', () => {
+    console.log('Connected to WebSocket server');
+    sendJoinNotification();
+  });
 
-// Handle real-time updates
-socket.on('update', (update) => {
-    const range = document.createRange();
-    const selection = window.getSelection();
-    const offset = selection.focusOffset || 0;
+  socket.addEventListener('message', (message) => {
+    const data = JSON.parse(message.data);
+    handleWebSocketMessage(data);
+  });
 
-    editor.value = editor.value.substring(0, update.start) + update.text + editor.value.substring(update.end);
-});
+  socket.addEventListener('close', () => {
+    console.log('Disconnected from WebSocket server');
+  });
 
-// Track local changes
-let lastChange = 0;
-let timeout;
-
-editor.addEventListener('input', (e) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => {
-        const start = e.target.selectionStart;
-        const end = e.target.selectionEnd;
-        const text = e.target.value.substring(start, end);
-        
-        socket.emit('update', {
-            docId,
-            start,
-            end,
-            text,
-            userId
-        });
-        
-        lastChange = Date.now();
-    }, 500);
-});
-
-// User permissions
-socket.on('permissions', (perms) => {
-    if (!perms.includes(userId)) {
-        editor.readOnly = true;
-        alert('You do not have permission to edit this document');
-    }
-});
-
-// Version history
-socket.on('history', (versions) => {
-    const history = document.getElementById('history');
-    history.innerHTML = versions.map(v => `
-        <div>${v.version} - ${v.user} - ${v.date}</div>
-    `).join('');
-});
-
-// Firebase setup
-const firebaseConfig = {
-    apiKey: 'your-api-key',
-    authDomain: 'your-auth-domain',
-    databaseURL: 'your-database-url'
-};
-
-const firebase = initializeApp(firebaseConfig);
-const db = getFirestore(firebase);
-
-// Save document
-async function saveDocument() {
-    await setDoc(doc(db, 'documents', docId), {
-        content: editor.value,
-        lastModified: serverTimestamp(),
-        version: increment(1)
-    });
-}
-
-// Real-time database listener
-onSnapshot(doc(db, 'documents', docId), (doc) => {
-    if (doc.exists()) {
-        editor.value = doc.data().content;
-    }
-});
-
-// Error handling
-socket.on('error', (error) => {
+  socket.addEventListener('error', (error) => {
     console.error('WebSocket error:', error);
+  });
+}
+
+function sendJoinNotification() {
+  const message = {
+    type: 'join',
+    document: currentDocument,
+    user: userName,
+  };
+  socket.send(JSON.stringify(message));
+}
+
+function handleWebSocketMessage(data) {
+  switch (data.type) {
+    case 'documentContent':
+      initDocumentContent(data.content);
+      break;
+    case 'userJoin':
+      updateUserList(data.users);
+      break;
+    case 'edit':
+      updateDocumentContent(data);
+      break;
+    case 'typing':
+      showTypingNotification(data.user);
+      break;
+    case 'userLeave':
+      updateUserList(data.users);
+      break;
+  }
+}
+
+function initDocumentContent(content) {
+  document.getElementById('text-editor').value = content;
+}
+
+function updateUserList(users) {
+  const userListContainer = document.getElementById('user-list');
+  userListContainer.innerHTML = 'Users Editing: ' + users.join(', ');
+}
+
+function updateDocumentContent(data) {
+  const textarea = document.getElementById('text-editor');
+  const cursorPosition = textarea.selectionStart;
+  const currentValue = textarea.value;
+  textarea.value = currentValue.slice(0, data.position) + data.content + currentValue.slice(data.position);
+
+  if (cursorPosition > data.position) {
+    textarea.setSelectionRange(cursorPosition + data.content.length, cursorPosition + data.content.length);
+  }
+}
+
+function showTypingNotification(user) {
+  document.getElementById('status-message').textContent = `${user} is typing...`;
+  clearTimeout(typingTimeout);
+  typingTimeout = setTimeout(() => {
+    document.getElementById('status-message').textContent = '';
+  }, 2000);
+}
+
+document.getElementById('text-editor').addEventListener('input', (event) => {
+  const content = event.target.value;
+  const position = event.target.selectionStart;
+
+  if (!isTyping) {
+    socket.send(JSON.stringify({ type: 'typing', user: userName }));
+    isTyping = true;
+    setTimeout(() => isTyping = false, 2000);
+  }
+
+  socket.send(JSON.stringify({
+    type: 'edit',
+    document: currentDocument,
+    user: userName,
+    content: content.slice(position - 1, position),
+    position: position - 1
+  }));
 });
 
-// UUID generator
-function UUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        var r = Math.random() * 16 | 0;
-        var v = c == 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-    });
-}
+document.getElementById('save-button').addEventListener('click', () => {
+  const content = document.getElementById('text-editor').value;
+  socket.send(JSON.stringify({
+    type: 'save',
+    document: currentDocument,
+    content,
+    user: userName
+  }));
+  document.getElementById('status-message').textContent = 'Document saved.';
+  setTimeout(() => {
+    document.getElementById('status-message').textContent = '';
+  }, 2000);
+});
+
+setupWebSocket();

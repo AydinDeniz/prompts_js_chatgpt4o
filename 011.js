@@ -1,94 +1,55 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const cors = require('cors');
-const mongoose = require('mongoose');
-const QRCode = require('qrcode');
-const nodemailer = require('nodemailer');
+// HTML for the form (assumed to be in your HTML file)
+/*
+<form id="event-form">
+  <input type="text" id="name" placeholder="Name" required />
+  <input type="email" id="email" placeholder="Email" required />
+  <select id="event">
+    <option value="event1">Event 1</option>
+    <option value="event2">Event 2</option>
+    <option value="event3">Event 3</option>
+  </select>
+  <input type="text" id="diet" placeholder="Dietary Preferences" />
+  <button type="submit">Register</button>
+</form>
+<div id="message"></div>
+*/
 
-const app = express();
-const port = process.env.PORT || 3000;
+document.getElementById('event-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  
+  // Gather form data
+  const name = document.getElementById('name').value;
+  const email = document.getElementById('email').value;
+  const event = document.getElementById('event').value;
+  const diet = document.getElementById('diet').value;
+  
+  // Validate email (basic validation)
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    document.getElementById('message').textContent = 'Invalid email address.';
+    return;
+  }
+  
+  try {
+    // Send data to server
+    const response = await fetch('/api/register', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ name, email, event, diet })
+    });
 
-// Database connection
-mongoose.connect('mongodb://localhost/eventdb', { useNewUrlParser: true, useUnifiedTopology: true });
+    const result = await response.json();
 
-// Schema
-const registrationSchema = new mongoose.Schema({
-    name: String,
-    email: String,
-    event: String,
-    dietary: [String],
-    qrCode: String,
-    date: { type: Date, default: Date.now }
-});
-
-const Registration = mongoose.model('Registration', registrationSchema);
-
-// Middleware
-app.use(bodyParser.json());
-app.use(cors());
-
-// Transporter
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: 'your-email@gmail.com',
-        pass: 'your-app-password'
+    if (response.ok) {
+      document.getElementById('message').textContent = `Registration successful! Check your email for the QR code.`;
+      // Assuming that result.qrCode contains the URL of the QR code image
+      // You can use this to display or download the QR code
+    } else {
+      document.getElementById('message').textContent = `Error: ${result.message}`;
     }
-});
-
-// Routes
-app.post('/register', async (req, res) => {
-    try {
-        const { name, email, event, dietary } = req.body;
-
-        // Validate inputs
-        if (!name || !email || !event) {
-            return res.status(400).json({ error: 'Please fill in all required fields' });
-        }
-
-        // Generate QR code
-        const qrCode = await QRCode.toDataURL(email);
-
-        // Save registration
-        const registration = new Registration({
-            name,
-            email,
-            event,
-            dietary,
-            qrCode
-        });
-
-        const saved = await registration.save();
-
-        // Send confirmation email
-        const mailOptions = {
-            from: 'your-email@gmail.com',
-            to: email,
-            subject: 'Event Registration Confirmation',
-            html: `
-                <h2>Event Registration Confirmation</h2>
-                <p>Dear ${name},</p>
-                <p>Thank you for registering for ${event}.</p>
-                <p>Please find your QR code below:</p>
-                <img src="${qrCode}" alt="QR Code">
-                <p>See you at the event!</p>
-            `
-        };
-
-        await transporter.sendMail(mailOptions);
-
-        res.status(201).json({
-            message: 'Registration successful',
-            qrCode
-        });
-
-    } catch (error) {
-        console.error('Registration error:', error);
-        res.status(500).json({ error: 'Registration failed' });
-    }
-});
-
-// Start server
-app.listen(port, () => {
-    console.log(`Event registration server running on port ${port}`);
+  } catch (error) {
+    document.getElementById('message').textContent = 'An error occurred. Please try again later.';
+  }
 });

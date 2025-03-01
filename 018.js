@@ -1,101 +1,114 @@
-// Frontend code
-const videoInput = document.getElementById('video-input');
-const uploadButton = document.getElementById('upload-button');
-const progressBar = document.getElementById('progress-bar');
-const preview = document.getElementById('preview');
+// HTML for the video upload platform (assumed to be in your HTML file)
+/*
+<div id="video-upload-platform">
+  <form id="video-upload-form">
+    <input type="text" id="video-title" placeholder="Video Title" required />
+    <select id="video-category">
+      <option value="">Select Category</option>
+      <option value="music">Music</option>
+      <option value="education">Education</option>
+      <option value="entertainment">Entertainment</option>
+    </select>
+    <input type="file" id="video-file" accept="video/*" required />
+    <button type="submit">Upload Video</button>
+  </form>
+  <progress id="upload-progress" value="0" max="100" style="width: 100%; display: none;"></progress>
+  <div id="upload-message"></div>
+  <div id="video-gallery"></div>
+</div>
+*/
 
-// Initialize AWS S3
-const AWS = require('aws-sdk');
-const s3 = new AWS.S3({
-    region: 'your-region',
-    accessKeyId: 'your-access-key',
-    secretAccessKey: 'your-secret-key'
-});
+class VideoUploadPlatform {
+  constructor(apiUrl) {
+    this.apiUrl = apiUrl;
+    this.init();
+  }
 
-// MongoDB connection
-const mongoose = require('mongoose');
-mongoose.connect('mongodb://localhost/videos', { useNewUrlParser: true, useUnifiedTopology: true });
+  init() {
+    this.setupEventListeners();
+  }
 
-// Video schema
-const videoSchema = new mongoose.Schema({
-    title: String,
-    description: String,
-    category: String,
-    uploadedBy: String,
-    videoId: String,
-    uploadedAt: { type: Date, default: Date.now }
-});
+  setupEventListeners() {
+    document.getElementById('video-upload-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.uploadVideo();
+    });
+  }
 
-const Video = mongoose.model('Video', videoSchema);
+  async uploadVideo() {
+    const title = document.getElementById('video-title').value;
+    const category = document.getElementById('video-category').value;
+    const videoFile = document.getElementById('video-file').files[0];
 
-// Handle file selection
-videoInput.addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    if (file) {
-        preview.src = URL.createObjectURL(file);
-        uploadButton.disabled = false;
+    if (!category || !videoFile) {
+      alert('Please select a category and a video file.');
+      return;
     }
-});
 
-// Upload video
-uploadButton.addEventListener('click', async function() {
-    const file = videoInput.files[0];
-    const formData = new FormData(document.getElementById('upload-form'));
-    
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('category', category);
+    formData.append('video', videoFile);
+
+    document.getElementById('upload-progress').style.display = 'block';
+
     try {
-        // Generate unique video ID
-        const videoId = Math.random().toString(36).substr(2, 9);
-        
-        // Upload to S3
-        const uploadParams = {
-            Bucket: 'your-bucket-name',
-            Key: `videos/${videoId}`,
-            Body: file,
-            ContentType: file.type
-        };
+      const response = await fetch(`${this.apiUrl}/videos`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Accept': 'application/json'
+        },
+      });
 
-        const upload = await s3.upload(uploadParams).promise();
-        const videoUrl = upload.Location;
-
-        // Save metadata to MongoDB
-        const video = new Video({
-            title: formData.get('title'),
-            description: formData.get('description'),
-            category: formData.get('category'),
-            uploadedBy: 'current-user-id',
-            videoId
-        });
-
-        await video.save();
-
-        alert('Video uploaded successfully!');
-        window.location.reload();
+      if (!response.ok) throw new Error('Failed to upload video');
+      
+      document.getElementById('upload-message').textContent = 'Video uploaded successfully!';
+      document.getElementById('upload-progress').value = 100;
+      this.resetForm();
+      this.loadVideoGallery();
     } catch (error) {
-        console.error('Upload error:', error);
-        alert('Failed to upload video');
+      console.error('Error uploading video:', error);
+      document.getElementById('upload-message').textContent = 'Error uploading video.';
+    } finally {
+      document.getElementById('upload-progress').style.display = 'none';
     }
-});
+  }
 
-// Update progress bar
-s3.upload(uploadParams, function(err, data) {
-    if (err) throw err;
-    progressBar.style.width = (data.loaded * 100) / data.total + '%';
-});
+  resetForm() {
+    document.getElementById('video-upload-form').reset();
+  }
 
-// Initialize progress
-let interval;
-s3.upload(uploadParams, function(err, data) {
-    if (err) throw err;
-    if (data.httpUploadProgress) {
-        interval = setInterval(() => {
-            progressBar.style.width = 
-                (data.httpUploadProgress.loaded * 100) / 
-                data.httpUploadProgress.total + '%';
-        }, 1000);
+  async loadVideoGallery() {
+    try {
+      const response = await fetch(`${this.apiUrl}/videos`);
+      if (!response.ok) throw new Error('Failed to load video gallery');
+      const videos = await response.json();
+      this.displayVideoGallery(videos);
+    } catch (error) {
+      console.error('Error loading video gallery:', error);
     }
-}).on('httpUploadProgress', function(progress) {
-    if (progress.loaded === progress.total) {
-        clearInterval(interval);
-        progressBar.style.width = '100%';
-    }
-});
+  }
+
+  displayVideoGallery(videos) {
+    const gallery = document.getElementById('video-gallery');
+    gallery.innerHTML = '';
+    
+    videos.forEach(video => {
+      const videoElement = document.createElement('div');
+      videoElement.className = 'video';
+      videoElement.innerHTML = `
+        <h3>${video.title}</h3>
+        <p>Category: ${video.category}</p>
+        <video width="320" height="240" controls>
+          <source src="${video.url}" type="video/mp4">
+          Your browser does not support the video tag.
+        </video>
+      `;
+      gallery.appendChild(videoElement);
+    });
+  }
+}
+
+const videoUploadPlatform = new VideoUploadPlatform('https://api.videouploadplatform.com');
+videoUploadPlatform.loadVideoGallery();

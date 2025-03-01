@@ -1,46 +1,38 @@
+function compressAndDownloadImage(compressionLevel = 0.5) {
+    const fileInput = document.getElementById('fileInput');
+    const file = fileInput.files[0];
 
-// Function to compress an image file using canvas and FileReader
-function compressImage(file, compressionLevel = 0.7, callback) {
+    if (!file) {
+        alert('Please select an image file');
+        return;
+    }
+
     const reader = new FileReader();
-    
-    reader.onload = function(event) {
+    reader.onload = function(e) {
         const img = new Image();
-        
         img.onload = function() {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            
-            // Set canvas dimensions to image dimensions
+
+            // Set canvas dimensions to match image size
             canvas.width = img.width;
             canvas.height = img.height;
-            
-            // Draw image onto canvas
-            ctx.drawImage(img, 0, 0, img.width, img.height);
-            
-            // Compress image and get the base64 encoded string
-            canvas.toBlob((blob) => {
-                callback(blob);
-            }, 'image/jpeg', compressionLevel);
+
+            // Draw the image on the canvas
+            ctx.drawImage(img, 0, 0);
+
+            // Convert canvas to compressed data URL
+            const compressedImg = canvas.toDataURL(img.src, compressionLevel);
+
+            // Create a link to download the compressed image
+            const link = document.createElement('a');
+            link.download = `compressed-${file.name}`;
+            link.href = compressedImg;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         };
-
-        img.src = event.target.result;
+        img.src = e.target.result;
     };
-
     reader.readAsDataURL(file);
 }
-
-// Usage example with an HTML file input
-document.getElementById('fileInput').addEventListener('change', (event) => {
-    const file = event.target.files[0];
-    
-    compressImage(file, 0.7, (compressedBlob) => {
-        // Create a link to download the compressed image
-        const downloadLink = document.createElement('a');
-        downloadLink.href = URL.createObjectURL(compressedBlob);
-        downloadLink.download = 'compressed_image.jpg';
-        downloadLink.innerText = 'Download Compressed Image';
-        
-        // Append the link to the DOM
-        document.body.appendChild(downloadLink);
-    });
-});

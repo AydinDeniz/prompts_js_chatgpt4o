@@ -1,34 +1,37 @@
-
-// Debounce function: delays function execution until after a specified wait period
-function debounce(func, wait) {
-    let timeout;
+// Debounce Function
+function debounce(fn, wait = 500) {
+    let timeoutId;
     return function(...args) {
-        const context = this;
-        clearTimeout(timeout);
-        timeout = setTimeout(() => func.apply(context, args), wait);
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+            fn.apply(this, args);
+        }, wait);
     };
 }
 
-// Throttle function: enforces a limit on function execution frequency
-function throttle(func, limit) {
-    let inThrottle;
+// Throttle Function
+function throttle(fn, delay = 500) {
+    let lastCallTime;
     return function(...args) {
-        const context = this;
-        if (!inThrottle) {
-            func.apply(context, args);
-            inThrottle = true;
-            setTimeout(() => inThrottle = false, limit);
+        const now = Date.now();
+        if (!lastCallTime || now - lastCallTime >= delay) {
+            fn.apply(this, args);
+            lastCallTime = now;
         }
     };
 }
 
-// Example usage
-// Debounce example: resize event
-window.addEventListener('resize', debounce(() => {
-    console.log('Resize event debounced');
-}, 500));
+// Example usage with window resize event
+const handleResize = () => {
+    console.log('Window resized to:', window.innerWidth, 'x', window.innerHeight);
+};
 
-// Throttle example: scroll event
-window.addEventListener('scroll', throttle(() => {
-    console.log('Scroll event throttled');
-}, 1000));
+// Apply debounce to handleResize
+const debouncedHandleResize = debounce(handleResize);
+
+window.addEventListener('resize', debouncedHandleResize);
+
+// Apply throttle to handleResize
+const throttledHandleResize = throttle(handleResize);
+
+window.addEventListener('resize', throttledHandleResize);

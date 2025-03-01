@@ -1,135 +1,120 @@
-// HTML for the e-commerce product page (assumed to be in your HTML file)
-/*
-<div id="product-page">
-  <div id="product-list"></div>
-  <div id="product-details" style="display: none;">
-    <h2 id="product-name"></h2>
-    <img id="product-image" src="" alt="Product Image" />
-    <p id="product-description"></p>
-    <ul id="product-reviews"></ul>
-    <button id="back-button">Back to Products</button>
-  </div>
-  <div>
-    <label for="review-filter">Filter reviews by rating:</label>
-    <select id="review-filter">
-      <option value="all">All</option>
-      <option value="5">5 Stars</option>
-      <option value="4">4 Stars</option>
-      <option value="3">3 Stars</option>
-      <option value="2">2 Stars</option>
-      <option value="1">1 Star</option>
-    </select>
-  </div>
-</div>
-*/
-
-class EcommerceProductPage {
-  constructor(apiUrl) {
-    this.apiUrl = apiUrl;
-    this.products = [];
-    this.reviews = [];
-    this.cachedProducts = {};
-    this.init();
-  }
-
-  async init() {
+// Function to fetch product data
+async function fetchProduct(id) {
     try {
-      this.products = await this.fetchProducts();
-      this.displayProducts();
+        const response = await fetch(`https://api.example.com/products/${id}`);
+        const data = await response.json();
+        return data;
     } catch (error) {
-      console.error('Error initializing product page:', error);
+        console.error('Error fetching product:', error);
+        return null;
     }
-    
-    this.setupEventListeners();
-  }
-
-  async fetchProducts() {
-    const response = await fetch(`${this.apiUrl}/products`);
-    if (!response.ok) throw new Error('Failed to fetch products');
-    this.cachedProducts = JSON.parse(localStorage.getItem('cachedProducts')) || {};
-    const products = await response.json();
-    products.forEach(product => this.cachedProducts[product.id] = product);
-    localStorage.setItem('cachedProducts', JSON.stringify(this.cachedProducts));
-    return products;
-  }
-
-  setupEventListeners() {
-    document.getElementById('review-filter').addEventListener('change', () => {
-      this.displayReviews(this.reviews);
-    });
-    document.getElementById('back-button').addEventListener('click', () => {
-      document.getElementById('product-details').style.display = 'none';
-      document.getElementById('product-list').style.display = 'block';
-    });
-  }
-
-  displayProducts() {
-    const productList = document.getElementById('product-list');
-    productList.innerHTML = '';
-    this.products.forEach(product => {
-      const productElement = document.createElement('div');
-      productElement.className = 'product';
-      productElement.innerHTML = `
-        <h3>${product.name}</h3>
-        <img src="${product.image}" alt="${product.name}" />
-        <p>${product.description.substring(0, 100)}...</p>
-        <button data-id="${product.id}">View Details</button>
-      `;
-      productList.appendChild(productElement);
-
-      productElement.querySelector('button').addEventListener('click', () => {
-        this.loadProductDetails(product.id);
-      });
-    });
-  }
-
-  async loadProductDetails(productId) {
-    const productDetails = this.cachedProducts[productId] || await this.fetchProductDetails(productId);
-    document.getElementById('product-name').textContent = productDetails.name;
-    document.getElementById('product-image').src = productDetails.image;
-    document.getElementById('product-description').textContent = productDetails.description;
-    
-    document.getElementById('product-list').style.display = 'none';
-    document.getElementById('product-details').style.display = 'block';
-
-    try {
-      this.reviews = await this.fetchProductReviews(productId);
-      this.displayReviews(this.reviews);
-    } catch (error) {
-      console.error('Error loading reviews:', error);
-    }
-  }
-
-  async fetchProductDetails(productId) {
-    const response = await fetch(`${this.apiUrl}/products/${productId}`);
-    if (!response.ok) throw new Error('Failed to fetch product details');
-    const productDetails = await response.json();
-    this.cachedProducts[productId] = productDetails;
-    localStorage.setItem('cachedProducts', JSON.stringify(this.cachedProducts));
-    return productDetails;
-  }
-
-  async fetchProductReviews(productId) {
-    const response = await fetch(`${this.apiUrl}/products/${productId}/reviews`);
-    if (!response.ok) throw new Error('Failed to fetch product reviews');
-    return response.json();
-  }
-
-  displayReviews(reviews) {
-    const filterValue = document.getElementById('review-filter').value;
-    const filteredReviews = filterValue === 'all' ? reviews : reviews.filter(review => review.rating.toString() === filterValue);
-    
-    const reviewsList = document.getElementById('product-reviews');
-    reviewsList.innerHTML = '';
-    filteredReviews.forEach(review => {
-      const reviewElement = document.createElement('li');
-      reviewElement.innerHTML = `
-        <strong>${review.username}</strong> (${review.rating} stars)
-        <p>${review.comment}</p>
-      `;
-      reviewsList.appendChild(reviewElement);
-    });
-  }
 }
 
-const ecommerceProductPage = new EcommerceProductPage('https://api.yourstore.com');
+// Function to initialize the product page
+async function initProductPage() {
+    const productId = window.location.pathname.split('/').pop();
+    const product = await fetchProduct(productId);
+
+    if (!product) {
+        document.getElementById('productContainer').innerHTML = 'Product not found';
+        return;
+    }
+
+    // Display product details
+    displayProductDetails(product);
+
+    // Initialize image gallery
+    initImageGallery(product.images);
+
+    // Fetch and display reviews
+    const reviews = await fetchReviews(product.id);
+    displayReviews(reviews);
+
+    // Cache product data in IndexedDB
+    cacheProductData(product);
+}
+
+// Function to display product details
+function displayProductDetails(product) {
+    const productContainer = document.getElementById('productContainer');
+    productContainer.innerHTML = `
+        <h1>${product.name}</h1>
+        <p>${product.description}</p>
+        <p>Price: $${product.price}</p>
+    `;
+}
+
+// Function to initialize image gallery
+function initImageGallery(images) {
+    const gallery = document.getElementById('imageGallery');
+    images.forEach(image => {
+        const img = document.createElement('img');
+        img.src = image.url;
+        img.alt = image.description;
+        gallery.appendChild(img);
+    });
+}
+
+// Function to fetch reviews
+async function fetchReviews(productId) {
+    try {
+        const response = await fetch(`https://api.example.com/products/${productId}/reviews`);
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        console.error('Error fetching reviews:', error);
+        return [];
+    }
+}
+
+// Function to display reviews
+function displayReviews(reviews) {
+    const reviewsContainer = document.getElementById('reviewsContainer');
+    reviewsContainer.innerHTML = reviews.map(review => `
+        <div class="review">
+            <h3>${review.author}</h3>
+            <p>Rating: ${review.rating}/5</p>
+            <p>${review.text}</p>
+        </div>
+    `).join('');
+}
+
+// Function to cache product data in IndexedDB
+function cacheProductData(product) {
+    if (!window.indexedDB) {
+        console.log('IndexedDB is not supported');
+        return;
+    }
+
+    const request = window.indexedDB.open('productsDB', 1);
+    request.onupgradeneeded = function(e) {
+        const db = e.target.result;
+        db.createObjectStore('products', { keyPath: 'id' });
+    };
+
+    request.onsuccess = function(e) {
+        const db = e.target.result;
+        const transaction = db.transaction('products', 'readwrite');
+        const store = transaction.objectStore('products');
+        store.put(product);
+        transaction.oncomplete = function() {
+            db.close();
+        };
+    };
+}
+
+// Function to filter reviews by rating
+function filterReviewsByRating(rating) {
+    fetchReviews().then(reviews => {
+        const filteredReviews = reviews.filter(review => review.rating >= rating);
+        displayReviews(filteredReviews);
+    });
+}
+
+// Event listener for rating filter
+document.getElementById('ratingFilter').addEventListener('change', function(e) {
+    filterReviewsByRating(e.target.value);
+});
+
+// Initialize the product page
+window.onload = initProductPage;

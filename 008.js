@@ -1,31 +1,51 @@
-
-// Import WebSocket library
 const WebSocket = require('ws');
-
-// Create WebSocket server
 const wss = new WebSocket.Server({ port: 8080 });
 
-// Track connected clients
-const clients = new Set();
+// Store active users
+const activeUsers = new Set();
+
+// Broadcast messages to all connected clients
+function broadcast(message) {
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify(message));
+        }
+    });
+}
 
 wss.on('connection', (ws) => {
-    // Add client to the set
-    clients.add(ws);
     console.log('New client connected');
 
-    // Broadcast message to all clients
     ws.on('message', (message) => {
-        console.log('Received:', message);
-        for (let client of clients) {
-            if (client !== ws && client.readyState === WebSocket.OPEN) {
-                client.send(message);
-            }
+        const data = JSON.parse(message);
+        switch (data.type) {
+            case 'join':
+                activeUsers.add(data.username);
+                broadcast({
+                    type: 'userJoined',
+                    username: data.username,
+                    message: `${data.username} has joined the chat!`
+                });
+                break;
+            case 'message':
+                broadcast({
+                    type: 'message',
+                    username: data.username,
+                    message: data.message
+                });
+                break;
+            case 'leave':
+                activeUsers.delete(data.username);
+                broadcast({
+                    type: 'userLeft',
+                    username: data.username,
+                    message: `${data.username} has left the chat!`
+                });
+                break;
         }
     });
 
-    // Remove client on close
     ws.on('close', () => {
-        clients.delete(ws);
         console.log('Client disconnected');
     });
 });

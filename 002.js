@@ -1,51 +1,54 @@
-
-// Import Puppeteer
 const puppeteer = require('puppeteer');
 
-// Function to scrape data from a list of URLs
-async function scrapeData(urls) {
-    const browser = await puppeteer.launch({ headless: true });
+async function scrapeMultipleUrls(urls, selectors) {
+    // Initialize the browser and a new page
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+
     const results = [];
 
     for (const url of urls) {
-        const page = await browser.newPage();
-        await page.goto(url, { waitUntil: 'domcontentloaded' });
+        await page.goto(url, { waitUntil: 'networkidle0' });
 
-        try {
-            // Wait for the element to load (customize the selector as needed)
-            await page.waitForSelector('h1');
+        const pageData = {
+            url: url,
+            data: {}
+        };
 
-            // Extract data from specific elements (customize selectors as needed)
-            const data = await page.evaluate(() => {
-                return {
-                    title: document.querySelector('h1')?.innerText || '',
-                    description: document.querySelector('meta[name="description"]')?.content || '',
-                    firstParagraph: document.querySelector('p')?.innerText || ''
-                };
-            });
+        for (const [elementName, selector] of Object.entries(selectors)) {
+            try {
+                // Wait for the element to be available
+                await page.waitForSelector(selector, { timeout: 5000 });
 
-            results.push({ url, data });
+                // Extract the text content
+                const text = await page.$eval(selector, element => element.textContent);
 
-        } catch (error) {
-            console.log(`Error scraping ${url}:`, error);
-            results.push({ url, error: error.message });
-        } finally {
-            await page.close();
+                pageData.data[elementName] = text.trim();
+            } catch (error) {
+                console.error(`Element '${selector}' not found on ${url}`);
+                pageData.data[elementName] = 'Element not found';
+            }
         }
+
+        results.push(pageData);
     }
 
     await browser.close();
     return results;
 }
 
-// Sample list of URLs to scrape
+// Example usage
 const urls = [
-    'https://example.com',
-    'https://example.org',
-    'https://example.net'
+    'https://example.com/page1',
+    'https://example.com/page2'
 ];
 
-// Run the scraping function and log the results
-scrapeData(urls).then(results => {
-    console.log(JSON.stringify(results, null, 2));
-}).catch(error => console.error('Error in scraping:', error));
+const selectors = {
+    'title': 'title',
+    'header': 'h1',
+    'mainContent': '#main-content'
+};
+
+scrapeMultipleUrls(urls, selectors)
+    .then(data => console.log(data))
+    .catch(error => console.error('Error:', error));

@@ -1,62 +1,48 @@
-
-// Dijkstra's Algorithm to find the shortest path in a weighted graph
-function dijkstra(graph, startNode) {
+function dijkstra(graph, startNode, endNode) {
     const distances = {};
-    const visited = new Set();
-    const previousNodes = {};
+    const predecessors = {};
+    let priorityQueue = [];
 
-    // Initialize distances
-    for (let node in graph) {
+    // Initialize distances and priority queue
+    for (const node in graph) {
         distances[node] = Infinity;
-        previousNodes[node] = null;
+        predecessors[node] = null;
     }
     distances[startNode] = 0;
+    priorityQueue.push([0, startNode]);
 
-    while (visited.size < Object.keys(graph).length) {
-        // Find the unvisited node with the smallest distance
-        let currentNode = Object.keys(distances)
-            .filter(node => !visited.has(node))
-            .reduce((closestNode, node) => 
-                distances[node] < distances[closestNode] ? node : closestNode, 
-                Object.keys(distances)[0]);
+    while (priorityQueue.length > 0) {
+        priorityQueue.sort((a, b) => a[0] - b[0]);
+        const [currentDistance, currentNode] = priorityQueue.shift();
 
-        // Mark the node as visited
-        visited.add(currentNode);
+        if (currentNode === endNode) break;
 
-        // Update distances for neighbors
-        for (let neighbor in graph[currentNode]) {
-            let distance = distances[currentNode] + graph[currentNode][neighbor];
+        if (currentDistance > distances[currentNode]) continue;
+
+        for (const neighbor in graph[currentNode]) {
+            const weight = graph[currentNode][neighbor];
+            const distance = currentDistance + weight;
+
             if (distance < distances[neighbor]) {
                 distances[neighbor] = distance;
-                previousNodes[neighbor] = currentNode;
+                predecessors[neighbor] = currentNode;
+                priorityQueue.push([distance, neighbor]);
             }
         }
     }
 
-    return { distances, previousNodes };
-}
-
-// Function to retrieve the shortest path from start to end node
-function getPath(previousNodes, startNode, endNode) {
-    const path = [];
-    for (let at = endNode; at !== null; at = previousNodes[at]) {
-        path.push(at);
+    function getPath() {
+        const path = [];
+        let node = endNode;
+        while (node !== null) {
+            path.unshift(node);
+            node = predecessors[node];
+        }
+        return path;
     }
-    return path.reverse();
+
+    return {
+        distance: distances[endNode],
+        path: getPath()
+    };
 }
-
-// Example usage
-const graph = {
-    A: { B: 1, C: 4 },
-    B: { A: 1, C: 2, D: 5 },
-    C: { A: 4, B: 2, D: 1 },
-    D: { B: 5, C: 1 }
-};
-
-const startNode = 'A';
-const endNode = 'D';
-const { distances, previousNodes } = dijkstra(graph, startNode);
-const path = getPath(previousNodes, startNode, endNode);
-
-console.log("Shortest distances from start node:", distances);
-console.log(`Shortest path from ${startNode} to ${endNode}:`, path);

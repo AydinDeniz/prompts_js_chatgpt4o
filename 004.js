@@ -1,66 +1,80 @@
+function validateAndSubmitForm(formData) {
+    // Validation logic
+    const validationRules = {
+        name: {
+            required: true,
+            minLength: 2,
+            maxLength: 50
+        },
+        email: {
+            required: true,
+            pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+            maxLength: 100
+        },
+        phone: {
+            required: true,
+            pattern: /^\d{10}$/,
+            maxLength: 10
+        }
+    };
 
-// Form validation function
-function validateAndSubmitForm() {
-    const name = document.getElementById("name").value.trim();
-    const email = document.getElementById("email").value.trim();
-    const phone = document.getElementById("phone").value.trim();
-    const feedback = document.getElementById("feedback");
+    let isValid = true;
 
     // Validate name
-    if (name === "" || !/^[a-zA-Z ]{2,30}$/.test(name)) {
-        feedback.innerText = "Please enter a valid name (2-30 alphabetic characters).";
-        return;
+    if (!formData.name) {
+        alert('Name is required');
+        isValid = false;
+    } else if (formData.name.length < validationRules.name.minLength || formData.name.length > validationRules.name.maxLength) {
+        alert('Name must be between 2 and 50 characters');
+        isValid = false;
     }
 
     // Validate email
-    if (email === "" || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-        feedback.innerText = "Please enter a valid email address.";
-        return;
+    if (!formData.email) {
+        alert('Email is required');
+        isValid = false;
+    } else if (!validationRules.email.pattern.test(formData.email)) {
+        alert('Please enter a valid email address');
+        isValid = false;
+    } else if (formData.email.length > validationRules.email.maxLength) {
+        alert('Email must be less than 100 characters');
+        isValid = false;
     }
 
-    // Validate phone (US format example)
-    if (phone === "" || !/^\+?\d{10,15}$/.test(phone)) {
-        feedback.innerText = "Please enter a valid phone number (10-15 digits, optionally prefixed with +).";
-        return;
+    // Validate phone number
+    if (!formData.phone) {
+        alert('Phone number is required');
+        isValid = false;
+    } else if (!validationRules.phone.pattern.test(formData.phone)) {
+        alert('Please enter a valid 10-digit phone number');
+        isValid = false;
+    } else if (formData.phone.length > validationRules.phone.maxLength) {
+        alert('Phone number must be 10 digits');
+        isValid = false;
     }
 
-    // Clear feedback
-    feedback.innerText = "";
+    if (!isValid) return;
 
-    // Data to send
-    const data = { name, email, phone };
-
-    // Send data to backend
-    fetch("http://localhost:3000/api/users", {
-        method: "POST",
+    // Submit data using Fetch API
+    fetch('/api/submit', {
+        method: 'POST',
         headers: {
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(formData),
     })
-    .then(response => response.json())
-    .then(result => {
-        if (result.success) {
-            feedback.innerText = "Submission successful!";
-        } else {
-            feedback.innerText = "Error: " + (result.message || "Unknown error occurred.");
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
         }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Success:', data);
+        alert('Form submitted successfully');
     })
     .catch(error => {
-        feedback.innerText = "Network error: " + error.message;
+        console.error('Error:', error);
+        alert('Error submitting form. Please try again later.');
     });
 }
-
-// Example HTML elements for input and feedback
-document.write(`
-    <form onsubmit="event.preventDefault(); validateAndSubmitForm();">
-        <label for="name">Name:</label>
-        <input type="text" id="name" name="name"><br><br>
-        <label for="email">Email:</label>
-        <input type="email" id="email" name="email"><br><br>
-        <label for="phone">Phone:</label>
-        <input type="text" id="phone" name="phone"><br><br>
-        <button type="submit">Submit</button>
-    </form>
-    <p id="feedback" style="color: red;"></p>
-`);
